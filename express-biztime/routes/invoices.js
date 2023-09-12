@@ -2,6 +2,7 @@ const express = require('express')
 const ExpressError = require('../expressError')
 const router = new express.Router()
 const db = require('../db')
+const datetime = require('node-datetime')
 
 
 router.get('/', async (req, res, next) => {
@@ -61,29 +62,50 @@ router.get('/', async (req, res, next) => {
     }
   });
   
-  // PUT route to update an existing invoice by ID
-  router.put('/:id', async (req, res, next) => {
-    try {
-      const id = req.params.id;
-      const { amt } = req.body;
-  
-      const query = {
-        text: 'UPDATE invoices SET amt = $1 WHERE id = $2 RETURNING *',
-        values: [amt, id],
-      };
-  
-      const result = await pool.query(query);
-  
-      if (result.rows.length === 0) {
-        throw new ExpressError('Invoice not found', 404);
-      }
-  
-      const updatedInvoice = result.rows[0];
-      res.json({ invoice: updatedInvoice });
-    } catch (err) {
-      next(err);
+ // PUT route to update an existing invoice by ID and handle paying/un-paying
+router.put('/invoices/:id', async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    const { amt, paid } = req.body;
+
+    const querySelect = {
+      text: 'SELECT id, comp_code, amt, paid, add_date, paid_date FROM invoices WHERE id = $1',
+      values: [id],
+    };
+
+    const selectResult = await pool.query(querySelect);
+
+    if (selectResult.rows.length === 0) {
+      throw new ExpressError('Invoice not found', 404);
     }
-  });
+
+    const invoice = selectResult.rows[0];
+    let updatedPaidDate;
+
+    if (paid === true && invoice.paid === false) {
+      // Paying an unpaid invoice: set paid_date to today
+      updatedPaidDate = new Date();
+    } else if (paid === false && invoice.paid === true) {
+      // Un-paying a paid invoice: set paid_date to null
+      updatedPaidDate = null;
+    } else {
+      // Keep the current paid_date for other cases
+      updatedPaidDate = invoice.paid_date;
+    }
+
+    const queryUpdate = {
+      text: 'UPDATE invoices SET amt = $1, paid = $2, paid_date = $3 WHERE id = $4 RETURNING *',
+      values: [amt, paid, updatedPaidDate, id],
+    };
+
+    const updateResult = await pool.query(queryUpdate);
+
+    const updatedInvoice = updateResult.rows[0];
+    res.json({ invoice: updatedInvoice });
+  } catch (err) {
+    next(err);
+  }
+});
   
   // DELETE route to delete an invoice by ID
   router.delete('/:id', async (req, res, next) => {
