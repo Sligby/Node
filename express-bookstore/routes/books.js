@@ -1,7 +1,9 @@
 const express = require("express");
 const Book = require("../models/book");
-
+const jsonschema = require('jsonschema')
 const router = new express.Router();
+const bookschema = require('../bookSchema.json');
+const ExpressError = require("../expressError");
 
 
 /** GET / => {books: [book, ...]}  */
@@ -31,7 +33,15 @@ router.get("/:id", async function (req, res, next) {
 router.post("/", async function (req, res, next) {
   try {
     const book = await Book.create(req.body);
+   const result = jsonschema.validate(book, bookschema)
+    if (!result.valid){ 
+      let listOfErrors = result.errors.map(error => error.stack);
+      let error = new ExpressError(listOfErrors, 400);
+      return next(error);
+    }
+    else{
     return res.status(201).json({ book });
+    }
   } catch (err) {
     return next(err);
   }
@@ -42,7 +52,15 @@ router.post("/", async function (req, res, next) {
 router.put("/:isbn", async function (req, res, next) {
   try {
     const book = await Book.update(req.params.isbn, req.body);
+    const result = json.validate(book, bookschema)
+    if (!result.valid){ 
+      let listOfErrors = result.errors.map(error => error.stack);
+      let error = new ExpressError(listOfErrors, 400);
+      return next(error);
+    }
+    else{
     return res.json({ book });
+    }
   } catch (err) {
     return next(err);
   }
